@@ -497,7 +497,6 @@ cmd_run() {
 
   # Initialize/validate cache
   local files_to_review="$STAGED_FILES"
-  local cached_files=""
   local cache_initialized=false
   
   if [[ "$use_cache" == true ]]; then
@@ -614,7 +613,8 @@ get_staged_files() {
   local excludes="$2"
 
   # Get all staged files (added, copied, modified)
-  local staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+  local staged
+  staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
 
   if [[ -z "$staged" ]]; then
     return
@@ -632,6 +632,7 @@ get_staged_files() {
     # Check if file matches any include pattern
     for pattern in "${PATTERN_ARRAY[@]}"; do
       pattern=$(echo "$pattern" | xargs) # trim whitespace
+      # shellcheck disable=SC2053 # Intentional glob matching
       if [[ "$file" == $pattern ]]; then
         match=true
         break
@@ -642,6 +643,7 @@ get_staged_files() {
     if [[ "$match" == true && -n "$excludes" ]]; then
       for pattern in "${EXCLUDE_ARRAY[@]}"; do
         pattern=$(echo "$pattern" | xargs) # trim whitespace
+        # shellcheck disable=SC2053 # Intentional glob matching
         if [[ "$file" == $pattern ]]; then
           excluded=true
           break

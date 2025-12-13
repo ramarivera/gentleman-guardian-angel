@@ -12,8 +12,6 @@
 
 # Colors (in case sourced independently)
 RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # ============================================================================
@@ -133,7 +131,7 @@ execute_claude() {
   
   # Claude CLI accepts prompt via stdin pipe
   echo "$prompt" | claude --print 2>&1
-  return ${PIPESTATUS[1]}
+  return "${PIPESTATUS[1]}"
 }
 
 execute_gemini() {
@@ -141,7 +139,7 @@ execute_gemini() {
   
   # Gemini CLI accepts prompt via stdin pipe or -p flag
   echo "$prompt" | gemini 2>&1
-  return ${PIPESTATUS[1]}
+  return "${PIPESTATUS[1]}"
 }
 
 execute_codex() {

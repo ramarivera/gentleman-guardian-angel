@@ -518,11 +518,11 @@ cmd_run() {
     local uncached_count=0
     
     while IFS= read -r file; do
-      [[ -n "$file" ]] && ((total_count++))
+      [[ -n "$file" ]] && total_count=$((total_count + 1))
     done <<< "$STAGED_FILES"
     
     while IFS= read -r file; do
-      [[ -n "$file" ]] && ((uncached_count++))
+      [[ -n "$file" ]] && uncached_count=$((uncached_count + 1))
     done <<< "$files_to_review"
     
     local cached_count=$((total_count - uncached_count))
@@ -632,10 +632,22 @@ get_staged_files() {
     # Check if file matches any include pattern
     for pattern in "${PATTERN_ARRAY[@]}"; do
       pattern=$(echo "$pattern" | xargs) # trim whitespace
-      # shellcheck disable=SC2053 # Intentional glob matching
-      if [[ "$file" == $pattern ]]; then
-        match=true
-        break
+      # Convert glob pattern to regex-like suffix match
+      # *.tsx -> check if file ends with .tsx
+      if [[ "$pattern" == \** ]]; then
+        # Pattern starts with *, so match suffix
+        local suffix="${pattern#\*}"
+        if [[ "$file" == *"$suffix" ]]; then
+          match=true
+          break
+        fi
+      else
+        # Exact match or other pattern
+        # shellcheck disable=SC2053
+        if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+          match=true
+          break
+        fi
       fi
     done
 
@@ -643,10 +655,19 @@ get_staged_files() {
     if [[ "$match" == true && -n "$excludes" ]]; then
       for pattern in "${EXCLUDE_ARRAY[@]}"; do
         pattern=$(echo "$pattern" | xargs) # trim whitespace
-        # shellcheck disable=SC2053 # Intentional glob matching
-        if [[ "$file" == $pattern ]]; then
-          excluded=true
-          break
+        # Convert glob pattern to regex-like suffix match
+        if [[ "$pattern" == \** ]]; then
+          local suffix="${pattern#\*}"
+          if [[ "$file" == *"$suffix" ]]; then
+            excluded=true
+            break
+          fi
+        else
+          # shellcheck disable=SC2053
+          if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+            excluded=true
+            break
+          fi
         fi
       done
     fi

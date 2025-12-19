@@ -451,7 +451,7 @@ PROVIDER="codex"
 PROVIDER="opencode"
 
 # Use OpenCode with specific model
-PROVIDER="opencode:anthropic/claude-3-opus"
+PROVIDER="opencode:anthropic/claude-opus-4-5"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"

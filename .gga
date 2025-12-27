@@ -39,3 +39,29 @@ RULES_FILES="README.md"
 # Strict mode: fail if AI response is ambiguous
 # Default: true
 STRICT_MODE="true"
+
+# Extra instructions to prepend to the AI prompt (optional)
+# Supports multiline using heredoc syntax or $'...\n...' syntax
+# Default: none
+#
+# Example 1 - Heredoc (recommended for multiple lines):
+# EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
+# Focus especially on error handling and security.
+# Be strict about hardcoded secrets or API keys.
+# Flag any console.log statements in production code.
+# INSTRUCTIONS
+# )
+#
+# Example 2 - Single line with escapes:
+# EXTRA_INSTRUCTIONS=$'Focus on security.\nBe strict about secrets.'
+#
+# Example 3 - Simple single line:
+# EXTRA_INSTRUCTIONS="Focus on error handling and security."
+
+# Active extra instructions for this project
+EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
+Focus especially on shell script best practices.
+Check for proper error handling with set -e.
+Verify all variables are properly quoted.
+INSTRUCTIONS
+)

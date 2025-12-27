@@ -33,6 +33,7 @@ DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_RULES_FILES=""  # Comma-separated list (takes precedence over RULES_FILE)
 DEFAULT_STRICT_MODE="true"
+DEFAULT_EXTRA_INSTRUCTIONS=""
 
 # ============================================================================
 # Helper Functions
@@ -82,6 +83,8 @@ print_help() {
   echo "  RULES_FILES        Multiple rules files, comma-separated (overrides RULES_FILE)"
   echo "                     Example: AGENTS.md,STYLE.md,CODE-REVIEW.md"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
+  echo "  EXTRA_INSTRUCTIONS Extra instructions prepended to AI prompt"
+  echo "                     Supports multiline via heredoc syntax"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init          # Create sample config"
@@ -127,6 +130,7 @@ load_config() {
   RULES_FILE="$DEFAULT_RULES_FILE"
   RULES_FILES="$DEFAULT_RULES_FILES"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
+  EXTRA_INSTRUCTIONS="$DEFAULT_EXTRA_INSTRUCTIONS"
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
@@ -255,6 +259,14 @@ cmd_config() {
   fi
   echo -e "  RULES_FILES:       ${CYAN}$RULES_FILES${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
+  if [[ -n "$EXTRA_INSTRUCTIONS" ]]; then
+    # Count lines in extra instructions
+    local line_count
+    line_count=$(echo "$EXTRA_INSTRUCTIONS" | wc -l | xargs)
+    echo -e "  EXTRA_INSTRUCTIONS: ${GREEN}Set ($line_count lines)${NC}"
+  else
+    echo -e "  EXTRA_INSTRUCTIONS: ${YELLOW}None${NC}"
+  fi
   echo ""
 
   # Check if rules files exist
@@ -327,6 +339,24 @@ RULES_FILE="AGENTS.md"
 # Strict mode: fail if AI response is ambiguous
 # Default: true
 STRICT_MODE="true"
+
+# Extra instructions to prepend to the AI prompt (optional)
+# Supports multiline using heredoc syntax or $'...\n...' syntax
+# Default: none
+#
+# Example 1 - Heredoc (recommended for multiple lines):
+# EXTRA_INSTRUCTIONS=$(cat <<'INSTRUCTIONS'
+# Focus especially on error handling and security.
+# Be strict about hardcoded secrets or API keys.
+# Flag any console.log statements in production code.
+# INSTRUCTIONS
+# )
+#
+# Example 2 - Single line with escapes:
+# EXTRA_INSTRUCTIONS=$'Focus on security.\nBe strict about secrets.'
+#
+# Example 3 - Simple single line:
+# EXTRA_INSTRUCTIONS="Focus on error handling and security."
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -559,6 +589,11 @@ cmd_run() {
   if [[ -n "$EXCLUDE_PATTERNS" ]]; then
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
   fi
+  if [[ -n "$EXTRA_INSTRUCTIONS" ]]; then
+    local line_count
+    line_count=$(echo "$EXTRA_INSTRUCTIONS" | wc -l | xargs)
+    log_info "Extra instructions: ${GREEN}$line_count line(s)${NC}"
+  fi
   
   # Cache status
   if [[ "$use_cache" == true ]]; then
@@ -763,10 +798,24 @@ get_staged_files() {
 build_prompt() {
   local rules="$1"
   local files="$2"
+  local extra="${EXTRA_INSTRUCTIONS:-}"
 
   # Start building the prompt
   cat << EOF
 You are a code reviewer. Analyze the files below and validate they comply with the coding standards provided.
+EOF
+
+  # Add extra instructions if provided
+  if [[ -n "$extra" ]]; then
+    cat << EOF
+
+=== ADDITIONAL INSTRUCTIONS ===
+$extra
+=== END ADDITIONAL INSTRUCTIONS ===
+EOF
+  fi
+
+  cat << EOF
 
 === CODING STANDARDS ===
 $rules

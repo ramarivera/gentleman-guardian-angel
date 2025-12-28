@@ -155,6 +155,9 @@ load_config() {
   # This allows backward compatibility with single RULES_FILE config
   if [[ -z "$RULES_FILES" && -n "$RULES_FILE" ]]; then
     RULES_FILES="$RULES_FILE"
+    RULES_CONFIG_SOURCE="RULES_FILE"
+  else
+    RULES_CONFIG_SOURCE="RULES_FILES"
   fi
 }
 
@@ -257,7 +260,12 @@ cmd_config() {
   else
     echo -e "  EXCLUDE_PATTERNS:  ${YELLOW}None${NC}"
   fi
-  echo -e "  RULES_FILES:       ${CYAN}$RULES_FILES${NC}"
+  # Display based on which config option was used
+  if [[ "$RULES_CONFIG_SOURCE" == "RULES_FILE" ]]; then
+    echo -e "  RULES_FILE:        ${CYAN}$RULES_FILES${NC}"
+  else
+    echo -e "  RULES_FILES:       ${CYAN}$RULES_FILES${NC}"
+  fi
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
   if [[ -n "$EXTRA_INSTRUCTIONS" ]]; then
     # Count lines in extra instructions

@@ -34,6 +34,7 @@ DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_RULES_FILES=""  # Comma-separated list (takes precedence over RULES_FILE)
 DEFAULT_STRICT_MODE="true"
 DEFAULT_EXTRA_INSTRUCTIONS=""
+DEFAULT_INCLUDE_COMMIT_MSG="false"
 
 # ============================================================================
 # Helper Functions
@@ -55,8 +56,8 @@ print_help() {
   echo ""
   echo -e "${BOLD}COMMANDS:${NC}"
   echo "  run [--no-cache]  Run code review on staged files"
-  echo "  install           Install git pre-commit hook in current repo"
-  echo "  uninstall         Remove git pre-commit hook from current repo"
+  echo "  install           Install git commit-msg hook in current repo"
+  echo "  uninstall         Remove git commit-msg hook from current repo"
   echo "  config            Show current configuration"
   echo "  init              Create a sample .gga config file"
   echo "  cache clear       Clear cache for current project"
@@ -85,6 +86,8 @@ print_help() {
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
   echo "  EXTRA_INSTRUCTIONS Extra instructions prepended to AI prompt"
   echo "                     Supports multiline via heredoc syntax"
+  echo "  INCLUDE_COMMIT_MSG Include commit message in AI review (default: false)"
+  echo "                     When true, the commit message is sent to the AI reviewer"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  gga init          # Create sample config"
@@ -131,6 +134,7 @@ load_config() {
   RULES_FILES="$DEFAULT_RULES_FILES"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
   EXTRA_INSTRUCTIONS="$DEFAULT_EXTRA_INSTRUCTIONS"
+  INCLUDE_COMMIT_MSG="$DEFAULT_INCLUDE_COMMIT_MSG"
 
   # Load global config first
   GLOBAL_CONFIG="$HOME/.config/gga/config"
@@ -275,6 +279,7 @@ cmd_config() {
   else
     echo -e "  EXTRA_INSTRUCTIONS: ${YELLOW}None${NC}"
   fi
+  echo -e "  INCLUDE_COMMIT_MSG: ${CYAN}$INCLUDE_COMMIT_MSG${NC}"
   echo ""
 
   # Check if rules files exist
@@ -366,6 +371,12 @@ STRICT_MODE="true"
 #
 # Example 2 - Simple single line (no special characters):
 # EXTRA_INSTRUCTIONS="Focus on error handling and security."
+
+# Include commit message in AI review
+# When true, the commit message is passed to the AI reviewer
+# Useful for validating commit message format, conventional commits, etc.
+# Default: false
+INCLUDE_COMMIT_MSG="false"
 EOF
 
   log_success "Created config file: $PROJECT_CONFIG"
@@ -395,10 +406,20 @@ cmd_install() {
   # - Regular repo: returns .git/hooks
   # - Worktree: returns the main repo's .git/hooks (where git actually looks)
   HOOKS_DIR=$(git rev-parse --git-path hooks)
-  HOOK_PATH="$HOOKS_DIR/pre-commit"
+  HOOK_PATH="$HOOKS_DIR/commit-msg"
+  OLD_HOOK_PATH="$HOOKS_DIR/pre-commit"
   
   # Ensure hooks directory exists (may not exist in fresh repos)
   mkdir -p "$HOOKS_DIR"
+
+  # Check for legacy pre-commit installation and warn user
+  if [[ -f "$OLD_HOOK_PATH" ]] && grep -q "gga" "$OLD_HOOK_PATH"; then
+    log_warning "Found GGA in pre-commit hook (legacy location)"
+    log_info "GGA now uses commit-msg hook for better commit message access"
+    log_info "Run 'gga uninstall' first to remove the old hook, then 'gga install' again"
+    echo ""
+    exit 1
+  fi
 
   # Check if hook already exists
   if [[ -f "$HOOK_PATH" ]]; then
@@ -423,14 +444,14 @@ cmd_install() {
     fi
     
     # Existing hook without GGA - insert with markers
-    log_info "Existing pre-commit hook found, adding GGA..."
+    log_info "Existing commit-msg hook found, adding GGA..."
     
     # Build the GGA block
     local gga_block
     gga_block=$(printf '\n%s\n%s\n%s\n%s' \
       "$GGA_MARKER_START" \
       "# Gentleman Guardian Angel - Code Review" \
-      'gga run || exit 1' \
+      'gga run "$1" || exit 1' \
       "$GGA_MARKER_END")
     
     # Check if hook ends with 'exit 0' or 'exit' (with optional whitespace)
@@ -471,12 +492,13 @@ cmd_install() {
 
 $GGA_MARKER_START
 # Gentleman Guardian Angel - Code Review
-gga run || exit 1
+# \$1 is the commit message file path (passed by git)
+gga run "\$1" || exit 1
 $GGA_MARKER_END
 EOF
 
   chmod +x "$HOOK_PATH"
-  log_success "Installed pre-commit hook: $HOOK_PATH"
+  log_success "Installed commit-msg hook: $HOOK_PATH"
   echo ""
 }
 
@@ -490,60 +512,75 @@ cmd_uninstall() {
   fi
 
   # Use --git-path hooks to get the correct hooks directory
-  # This works correctly for both regular repos and worktrees
   HOOKS_DIR=$(git rev-parse --git-path hooks)
-  HOOK_PATH="$HOOKS_DIR/pre-commit"
+  HOOK_PATH="$HOOKS_DIR/commit-msg"
+  OLD_HOOK_PATH="$HOOKS_DIR/pre-commit"
+  
+  local found_any=false
 
-  if [[ ! -f "$HOOK_PATH" ]]; then
-    log_warning "No pre-commit hook found"
-    exit 0
+  # First, check for legacy pre-commit installation
+  if [[ -f "$OLD_HOOK_PATH" ]] && grep -q "gga" "$OLD_HOOK_PATH"; then
+    found_any=true
+    uninstall_from_hook "$OLD_HOOK_PATH" "pre-commit"
   fi
 
+  # Then check for new commit-msg installation
+  if [[ -f "$HOOK_PATH" ]] && grep -q "gga" "$HOOK_PATH"; then
+    found_any=true
+    uninstall_from_hook "$HOOK_PATH" "commit-msg"
+  fi
+
+  if [[ "$found_any" == false ]]; then
+    log_warning "Gentleman Guardian Angel hook not found"
+    exit 0
+  fi
+  
+  echo ""
+}
+
+# Helper function to uninstall from a specific hook file
+uninstall_from_hook() {
+  local hook_path="$1"
+  local hook_name="$2"
+
   # Check for GGA using markers first (new format)
-  if grep -q "$GGA_MARKER_START" "$HOOK_PATH"; then
+  if grep -q "$GGA_MARKER_START" "$hook_path"; then
     # Remove content between markers (inclusive)
     if [[ "$(uname)" == "Darwin" ]]; then
-      sed -i '' "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$HOOK_PATH"
+      sed -i '' "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$hook_path"
     else
-      sed -i "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$HOOK_PATH"
+      sed -i "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$hook_path"
     fi
     
     # Check if file is now empty or only has shebang/whitespace
     local remaining_content
-    remaining_content=$(grep -Ecv '^#!|^[[:space:]]*$' "$HOOK_PATH" || true)
+    remaining_content=$(grep -Ecv '^#!|^[[:space:]]*$|^#' "$hook_path" || true)
     if [[ "$remaining_content" -eq 0 ]]; then
-      rm "$HOOK_PATH"
-      log_success "Removed pre-commit hook (was GGA-only)"
+      rm "$hook_path"
+      log_success "Removed $hook_name hook"
     else
-      log_success "Removed Gentleman Guardian Angel from pre-commit hook"
+      log_success "Removed Gentleman Guardian Angel from $hook_name hook"
     fi
-    echo ""
-    exit 0
+    return
   fi
 
-  # Fallback: check for legacy format (without markers)
-  if ! grep -q "gga" "$HOOK_PATH"; then
-    log_warning "Gentleman Guardian Angel hook not found in pre-commit"
-    exit 0
-  fi
-
-  # Legacy format: check if it's our hook only or mixed
-  if grep -q "^gga run" "$HOOK_PATH" && [[ $(wc -l < "$HOOK_PATH") -le 5 ]]; then
+  # Legacy format (no markers)
+  # Check if it's our hook only or mixed
+  if grep -q "^gga run" "$hook_path" && [[ $(wc -l < "$hook_path") -le 6 ]]; then
     # It's only our hook, remove the file
-    rm "$HOOK_PATH"
-    log_success "Removed pre-commit hook"
+    rm "$hook_path"
+    log_success "Removed $hook_name hook"
   else
     # Mixed hook, just remove our lines (legacy format)
     if [[ "$(uname)" == "Darwin" ]]; then
-      sed -i '' '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
-      sed -i '' '/gga run/d' "$HOOK_PATH"
+      sed -i '' '/# Gentleman Guardian Angel/d' "$hook_path"
+      sed -i '' '/gga run/d' "$hook_path"
     else
-      sed -i '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
-      sed -i '/gga run/d' "$HOOK_PATH"
+      sed -i '/# Gentleman Guardian Angel/d' "$hook_path"
+      sed -i '/gga run/d' "$hook_path"
     fi
-    log_success "Removed Gentleman Guardian Angel from pre-commit hook"
+    log_success "Removed Gentleman Guardian Angel from $hook_name hook"
   fi
-  echo ""
 }
 
 cmd_cache() {
@@ -616,12 +653,19 @@ cmd_cache() {
 
 cmd_run() {
   local use_cache=true
+  local commit_msg_file=""
   
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
       --no-cache)
         use_cache=false
+        ;;
+      *)
+        # First non-flag argument is the commit message file (from commit-msg hook)
+        if [[ -z "$commit_msg_file" && -f "$arg" ]]; then
+          commit_msg_file="$arg"
+        fi
         ;;
     esac
   done
@@ -672,6 +716,9 @@ cmd_run() {
     local line_count
     line_count=$(echo "$EXTRA_INSTRUCTIONS" | wc -l | xargs)
     log_info "Extra instructions: ${GREEN}$line_count line(s)${NC}"
+  fi
+  if [[ "$INCLUDE_COMMIT_MSG" == "true" ]]; then
+    log_info "Include commit message: ${GREEN}enabled${NC}"
   fi
   
   # Cache status
@@ -747,8 +794,36 @@ cmd_run() {
   # Read all rules files
   RULES=$(read_all_rules "$RULES_FILES")
 
+  # Get commit message if enabled
+  # Priority order:
+  # 1. Argument passed from commit-msg hook ($commit_msg_file)
+  # 2. GGA_COMMIT_MSG environment variable (for manual runs)
+  # 3. COMMIT_EDITMSG file (fallback for --amend or interactive commits)
+  COMMIT_MSG=""
+  if [[ "$INCLUDE_COMMIT_MSG" == "true" ]]; then
+    if [[ -n "$commit_msg_file" && -f "$commit_msg_file" ]]; then
+      # commit-msg hook passes the file path as argument
+      COMMIT_MSG=$(cat "$commit_msg_file")
+    elif [[ -n "${GGA_COMMIT_MSG:-}" ]]; then
+      # Explicit message passed via env var (for manual testing)
+      COMMIT_MSG="$GGA_COMMIT_MSG"
+    else
+      # Try COMMIT_EDITMSG as fallback
+      local editmsg_file
+      editmsg_file="$(git rev-parse --git-path COMMIT_EDITMSG 2>/dev/null)"
+      if [[ -f "$editmsg_file" ]]; then
+        COMMIT_MSG=$(cat "$editmsg_file")
+      fi
+    fi
+    
+    if [[ -z "$COMMIT_MSG" ]]; then
+      log_warning "No commit message available"
+      log_info "Tip: Ensure GGA is installed as commit-msg hook, or set GGA_COMMIT_MSG env var"
+    fi
+  fi
+
   # Build prompt only with files to review
-  PROMPT=$(build_prompt "$RULES" "$files_to_review")
+  PROMPT=$(build_prompt "$RULES" "$files_to_review" "$COMMIT_MSG")
 
   # Execute review
   log_info "Sending to $PROVIDER for review..."
@@ -877,6 +952,7 @@ get_staged_files() {
 build_prompt() {
   local rules="$1"
   local files="$2"
+  local commit_msg="${3:-}"
   local extra="${EXTRA_INSTRUCTIONS:-}"
 
   # Start building the prompt
@@ -899,6 +975,19 @@ EOF
 === CODING STANDARDS ===
 $rules
 === END CODING STANDARDS ===
+EOF
+
+  # Include commit message if provided
+  if [[ -n "$commit_msg" ]]; then
+    cat << EOF
+
+=== COMMIT MESSAGE ===
+$commit_msg
+=== END COMMIT MESSAGE ===
+EOF
+  fi
+
+  cat << 'EOF'
 
 === FILES TO REVIEW ===
 EOF

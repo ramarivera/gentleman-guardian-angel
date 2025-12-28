@@ -54,8 +54,10 @@ print_help() {
   echo ""
   echo -e "${BOLD}COMMANDS:${NC}"
   echo "  run [--no-cache]  Run code review on staged files"
-  echo "  install           Install git pre-commit hook in current repo"
-  echo "  uninstall         Remove git pre-commit hook from current repo"
+  echo "  install           Install git pre-commit hook (default)"
+  echo "  install --commit-msg"
+  echo "                    Install git commit-msg hook (enables commit message access)"
+  echo "  uninstall         Remove git hooks from current repo"
   echo "  config            Show current configuration"
   echo "  init              Create a sample .gga config file"
   echo "  cache clear       Clear cache for current project"
@@ -68,6 +70,11 @@ print_help() {
   echo "  --no-cache        Force review all files, ignoring cache"
   echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
   echo "                    Use this in GitLab CI, GitHub Actions, etc."
+  echo ""
+  echo -e "${BOLD}INSTALL OPTIONS:${NC}"
+  echo "  --commit-msg      Use commit-msg hook instead of pre-commit"
+  echo "                    This enables INCLUDE_COMMIT_MSG feature for commit"
+  echo "                    message validation (conventional commits, etc.)"
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
   echo "  Create a ${CYAN}.gga${NC} file in your project root or"
@@ -83,16 +90,16 @@ print_help() {
   echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
   echo "  INCLUDE_COMMIT_MSG Include commit message in AI review (default: false)"
-  echo "                     Note: In pre-commit hook, message isn't available yet."
-  echo "                     Works with: commit-msg hook, --amend, or GGA_COMMIT_MSG env"
+  echo "                     Requires commit-msg hook: gga install --commit-msg"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
-  echo "  gga init          # Create sample config"
-  echo "  gga install       # Install git hook"
-  echo "  gga run           # Run review (with cache)"
-  echo "  gga run --no-cache # Run review (ignore cache)"
-  echo "  gga run --ci      # Run review in CI (last commit)"
-  echo "  gga cache status  # Show cache info"
+  echo "  gga init              # Create sample config"
+  echo "  gga install           # Install pre-commit hook (default)"
+  echo "  gga install --commit-msg  # Install commit-msg hook"
+  echo "  gga run               # Run review (with cache)"
+  echo "  gga run --no-cache    # Run review (ignore cache)"
+  echo "  gga run --ci          # Run review in CI (last commit)"
+  echo "  gga cache status      # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
   echo "  GGA_PROVIDER      Override provider from config"
@@ -263,6 +270,7 @@ STRICT_MODE="true"
 # Include commit message in AI review
 # When true, the staged commit message is passed to the AI reviewer
 # Useful for validating commit message format, conventional commits, etc.
+# NOTE: Requires commit-msg hook: gga install --commit-msg
 # Default: false
 INCLUDE_COMMIT_MSG="false"
 EOF
@@ -273,6 +281,7 @@ EOF
   echo "  1. Edit $PROJECT_CONFIG to set your preferred provider"
   echo "  2. Create $DEFAULT_RULES_FILE with your coding standards"
   echo "  3. Run: gga install"
+  echo "     Or for commit message validation: gga install --commit-msg"
   echo ""
 }
 
@@ -289,15 +298,36 @@ cmd_install() {
     exit 1
   fi
 
+  # Parse arguments to determine hook type
+  local hook_type="pre-commit"  # default
+  
+  for arg in "$@"; do
+    case "$arg" in
+      --commit-msg)
+        hook_type="commit-msg"
+        ;;
+    esac
+  done
+
   # Use --git-path hooks to get the correct hooks directory
   # This works correctly for both regular repos and worktrees:
   # - Regular repo: returns .git/hooks
   # - Worktree: returns the main repo's .git/hooks (where git actually looks)
   HOOKS_DIR=$(git rev-parse --git-path hooks)
-  HOOK_PATH="$HOOKS_DIR/pre-commit"
+  HOOK_PATH="$HOOKS_DIR/$hook_type"
   
   # Ensure hooks directory exists (may not exist in fresh repos)
   mkdir -p "$HOOKS_DIR"
+
+  # Determine the gga run command based on hook type
+  local gga_run_cmd
+  if [[ "$hook_type" == "commit-msg" ]]; then
+    # commit-msg hook receives the commit message file as $1
+    gga_run_cmd='gga run "$1" || exit 1'
+  else
+    # pre-commit hook doesn't receive arguments
+    gga_run_cmd='gga run || exit 1'
+  fi
 
   # Check if hook already exists
   if [[ -f "$HOOK_PATH" ]]; then
@@ -317,19 +347,19 @@ cmd_install() {
 
     # Check if GGA is already installed (using markers)
     if grep -q "$GGA_MARKER_START" "$HOOK_PATH"; then
-      log_warning "Gentleman Guardian Angel hook already installed"
+      log_warning "Gentleman Guardian Angel hook already installed in $hook_type"
       exit 0
     fi
     
     # Existing hook without GGA - insert with markers
-    log_info "Existing pre-commit hook found, adding GGA..."
+    log_info "Existing $hook_type hook found, adding GGA..."
     
     # Build the GGA block
     local gga_block
     gga_block=$(printf '\n%s\n%s\n%s\n%s' \
       "$GGA_MARKER_START" \
       "# Gentleman Guardian Angel - Code Review" \
-      'gga run || exit 1' \
+      "$gga_run_cmd" \
       "$GGA_MARKER_END")
     
     # Check if hook ends with 'exit 0' or 'exit' (with optional whitespace)
@@ -351,7 +381,7 @@ cmd_install() {
         } > "$temp_file"
         mv "$temp_file" "$HOOK_PATH"
         chmod +x "$HOOK_PATH"
-        log_success "Inserted Gentleman Guardian Angel before exit in hook: $HOOK_PATH"
+        log_success "Inserted Gentleman Guardian Angel before exit in $hook_type hook: $HOOK_PATH"
         echo ""
         exit 0
       fi
@@ -359,7 +389,7 @@ cmd_install() {
     
     # No exit statement found, append to end
     echo "$gga_block" >> "$HOOK_PATH"
-    log_success "Appended Gentleman Guardian Angel to existing hook: $HOOK_PATH"
+    log_success "Appended Gentleman Guardian Angel to existing $hook_type hook: $HOOK_PATH"
     echo ""
     exit 0
   fi
@@ -370,12 +400,15 @@ cmd_install() {
 
 $GGA_MARKER_START
 # Gentleman Guardian Angel - Code Review
-gga run || exit 1
+$gga_run_cmd
 $GGA_MARKER_END
 EOF
 
   chmod +x "$HOOK_PATH"
-  log_success "Installed pre-commit hook: $HOOK_PATH"
+  log_success "Installed $hook_type hook: $HOOK_PATH"
+  if [[ "$hook_type" == "commit-msg" ]]; then
+    log_info "Commit message validation is now available (INCLUDE_COMMIT_MSG=true)"
+  fi
   echo ""
 }
 
@@ -391,58 +424,74 @@ cmd_uninstall() {
   # Use --git-path hooks to get the correct hooks directory
   # This works correctly for both regular repos and worktrees
   HOOKS_DIR=$(git rev-parse --git-path hooks)
-  HOOK_PATH="$HOOKS_DIR/pre-commit"
+  local precommit_path="$HOOKS_DIR/pre-commit"
+  local commitmsg_path="$HOOKS_DIR/commit-msg"
+  
+  local found_any=false
 
-  if [[ ! -f "$HOOK_PATH" ]]; then
-    log_warning "No pre-commit hook found"
+  # Check for pre-commit installation
+  if [[ -f "$precommit_path" ]] && grep -q "gga" "$precommit_path"; then
+    found_any=true
+    uninstall_from_hook "$precommit_path" "pre-commit"
+  fi
+
+  # Check for commit-msg installation
+  if [[ -f "$commitmsg_path" ]] && grep -q "gga" "$commitmsg_path"; then
+    found_any=true
+    uninstall_from_hook "$commitmsg_path" "commit-msg"
+  fi
+
+  if [[ "$found_any" == false ]]; then
+    log_warning "Gentleman Guardian Angel hook not found"
     exit 0
   fi
+  
+  echo ""
+}
+
+# Helper function to uninstall from a specific hook file
+uninstall_from_hook() {
+  local hook_path="$1"
+  local hook_name="$2"
 
   # Check for GGA using markers first (new format)
-  if grep -q "$GGA_MARKER_START" "$HOOK_PATH"; then
+  if grep -q "$GGA_MARKER_START" "$hook_path"; then
     # Remove content between markers (inclusive)
     if [[ "$(uname)" == "Darwin" ]]; then
-      sed -i '' "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$HOOK_PATH"
+      sed -i '' "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$hook_path"
     else
-      sed -i "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$HOOK_PATH"
+      sed -i "/$GGA_MARKER_START/,/$GGA_MARKER_END/d" "$hook_path"
     fi
     
-    # Check if file is now empty or only has shebang/whitespace
+    # Check if file is now empty or only has shebang/whitespace/comments
     local remaining_content
-    remaining_content=$(grep -Ecv '^#!|^[[:space:]]*$' "$HOOK_PATH" || true)
+    remaining_content=$(grep -Ecv '^#!|^[[:space:]]*$|^#' "$hook_path" || true)
     if [[ "$remaining_content" -eq 0 ]]; then
-      rm "$HOOK_PATH"
-      log_success "Removed pre-commit hook (was GGA-only)"
+      rm "$hook_path"
+      log_success "Removed $hook_name hook"
     else
-      log_success "Removed Gentleman Guardian Angel from pre-commit hook"
+      log_success "Removed Gentleman Guardian Angel from $hook_name hook"
     fi
-    echo ""
-    exit 0
+    return
   fi
 
-  # Fallback: check for legacy format (without markers)
-  if ! grep -q "gga" "$HOOK_PATH"; then
-    log_warning "Gentleman Guardian Angel hook not found in pre-commit"
-    exit 0
-  fi
-
-  # Legacy format: check if it's our hook only or mixed
-  if grep -q "^gga run" "$HOOK_PATH" && [[ $(wc -l < "$HOOK_PATH") -le 5 ]]; then
+  # Legacy format (no markers)
+  # Check if it's our hook only or mixed
+  if grep -q "^gga run" "$hook_path" && [[ $(wc -l < "$hook_path") -le 6 ]]; then
     # It's only our hook, remove the file
-    rm "$HOOK_PATH"
-    log_success "Removed pre-commit hook"
+    rm "$hook_path"
+    log_success "Removed $hook_name hook"
   else
     # Mixed hook, just remove our lines (legacy format)
     if [[ "$(uname)" == "Darwin" ]]; then
-      sed -i '' '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
-      sed -i '' '/gga run/d' "$HOOK_PATH"
+      sed -i '' '/# Gentleman Guardian Angel/d' "$hook_path"
+      sed -i '' '/gga run/d' "$hook_path"
     else
-      sed -i '/# Gentleman Guardian Angel/d' "$HOOK_PATH"
-      sed -i '/gga run/d' "$HOOK_PATH"
+      sed -i '/# Gentleman Guardian Angel/d' "$hook_path"
+      sed -i '/gga run/d' "$hook_path"
     fi
-    log_success "Removed Gentleman Guardian Angel from pre-commit hook"
+    log_success "Removed Gentleman Guardian Angel from $hook_name hook"
   fi
-  echo ""
 }
 
 cmd_cache() {
@@ -516,6 +565,7 @@ cmd_cache() {
 cmd_run() {
   local use_cache=true
   local ci_mode=false
+  local commit_msg_file=""
   
   # Parse arguments
   for arg in "$@"; do
@@ -526,6 +576,12 @@ cmd_run() {
       --ci)
         ci_mode=true
         use_cache=false  # Cache doesn't make sense in CI
+        ;;
+      *)
+        # First non-flag argument is the commit message file (from commit-msg hook)
+        if [[ -z "$commit_msg_file" && -f "$arg" ]]; then
+          commit_msg_file="$arg"
+        fi
         ;;
     esac
   done
@@ -669,23 +725,20 @@ cmd_run() {
   RULES=$(cat "$RULES_FILE")
 
   # Get commit message if enabled
-  # Note: This works when:
-  # 1. COMMIT_MSG_FILE env var is set (by commit-msg hook)
-  # 2. Running 'gga run' manually with GGA_COMMIT_MSG env var
-  # 3. On --amend (reads previous message from COMMIT_EDITMSG)
-  # 
-  # During pre-commit hook, the message is NOT yet available (git hasn't written it)
-  # For full commit message validation, consider using GGA in a commit-msg hook instead.
+  # Priority order:
+  # 1. Argument passed from commit-msg hook ($commit_msg_file)
+  # 2. GGA_COMMIT_MSG environment variable (for manual runs)
+  # 3. COMMIT_EDITMSG file (fallback for --amend or interactive commits)
   COMMIT_MSG=""
   if [[ "$INCLUDE_COMMIT_MSG" == "true" ]]; then
-    if [[ -n "${GGA_COMMIT_MSG:-}" ]]; then
-      # Explicit message passed via env var
+    if [[ -n "$commit_msg_file" && -f "$commit_msg_file" ]]; then
+      # commit-msg hook passes the file path as argument
+      COMMIT_MSG=$(cat "$commit_msg_file")
+    elif [[ -n "${GGA_COMMIT_MSG:-}" ]]; then
+      # Explicit message passed via env var (for manual testing)
       COMMIT_MSG="$GGA_COMMIT_MSG"
-    elif [[ -n "${COMMIT_MSG_FILE:-}" && -f "$COMMIT_MSG_FILE" ]]; then
-      # commit-msg hook passes the file path
-      COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
     else
-      # Try COMMIT_EDITMSG (works on --amend or after editor closes)
+      # Try COMMIT_EDITMSG as fallback
       local editmsg_file
       editmsg_file="$(git rev-parse --git-path COMMIT_EDITMSG 2>/dev/null)"
       if [[ -f "$editmsg_file" ]]; then
@@ -694,8 +747,8 @@ cmd_run() {
     fi
     
     if [[ -z "$COMMIT_MSG" ]]; then
-      log_warning "No commit message available (pre-commit hook runs before message is written)"
-      log_info "Tip: Set GGA_COMMIT_MSG env var, or use GGA in a commit-msg hook"
+      log_warning "No commit message available"
+      log_info "Tip: Install with 'gga install --commit-msg' to enable commit message access"
     fi
   fi
 
@@ -733,6 +786,10 @@ cmd_run() {
     log_error "CODE REVIEW FAILED"
     echo ""
     echo "Fix the violations listed above before committing."
+    echo ""
+    # Recovery warning for AI agents
+    echo -e "${YELLOW}⚠️  RECOVERY TIP: Do NOT use destructive git commands (git reset, git checkout --, etc.)${NC}"
+    echo -e "${YELLOW}   Simply fix the issues and run 'git commit' again. Your staged changes are preserved.${NC}"
     echo ""
     exit 1
   else
@@ -963,7 +1020,8 @@ main() {
       cmd_run "$@"
       ;;
     install)
-      cmd_install
+      shift
+      cmd_install "$@"
       ;;
     uninstall)
       cmd_uninstall

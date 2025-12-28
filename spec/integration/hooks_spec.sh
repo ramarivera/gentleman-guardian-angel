@@ -53,12 +53,13 @@ EOF
       The value "$count" should eq "1"
     End
 
-    It 'uses git-dir for hook path (worktree compatible)'
-      # The hook should be installed at $(git rev-parse --git-dir)/hooks/
+    It 'uses git-path hooks for hook path (worktree compatible)'
+      # The hook should be installed at $(git rev-parse --git-path hooks)/
+      # This correctly resolves to main repo's hooks even in worktrees
       "$GGA_BIN" install >/dev/null 2>&1
       
-      git_dir=$(git rev-parse --git-dir)
-      The path "$git_dir/hooks/pre-commit" should be file
+      hooks_dir=$(git rev-parse --git-path hooks)
+      The path "$hooks_dir/pre-commit" should be file
     End
   End
 

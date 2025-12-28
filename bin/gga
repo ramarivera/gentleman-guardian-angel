@@ -272,13 +272,15 @@ cmd_install() {
     exit 1
   fi
 
-  # Use --git-dir to correctly handle worktrees
-  # In a worktree, .git is a file pointing to the real git dir
-  GIT_DIR=$(git rev-parse --git-dir)
-  HOOK_PATH="$GIT_DIR/hooks/pre-commit"
+  # Use --git-path hooks to get the correct hooks directory
+  # This works correctly for both regular repos and worktrees:
+  # - Regular repo: returns .git/hooks
+  # - Worktree: returns the main repo's .git/hooks (where git actually looks)
+  HOOKS_DIR=$(git rev-parse --git-path hooks)
+  HOOK_PATH="$HOOKS_DIR/pre-commit"
   
   # Ensure hooks directory exists (may not exist in fresh repos)
-  mkdir -p "$GIT_DIR/hooks"
+  mkdir -p "$HOOKS_DIR"
 
   # Check if hook already exists
   if [[ -f "$HOOK_PATH" ]]; then
@@ -340,9 +342,10 @@ cmd_uninstall() {
     exit 1
   fi
 
-  # Use --git-dir to correctly handle worktrees
-  GIT_DIR=$(git rev-parse --git-dir)
-  HOOK_PATH="$GIT_DIR/hooks/pre-commit"
+  # Use --git-path hooks to get the correct hooks directory
+  # This works correctly for both regular repos and worktrees
+  HOOKS_DIR=$(git rev-parse --git-path hooks)
+  HOOK_PATH="$HOOKS_DIR/pre-commit"
 
   if [[ ! -f "$HOOK_PATH" ]]; then
     log_warning "No pre-commit hook found"

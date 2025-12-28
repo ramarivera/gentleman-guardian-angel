@@ -61,6 +61,30 @@ EOF
       hooks_dir=$(git rev-parse --git-path hooks)
       The path "$hooks_dir/pre-commit" should be file
     End
+
+    It 'inserts before exit 0 in existing hook'
+      mkdir -p .git/hooks
+      cat > .git/hooks/pre-commit << 'EOF'
+#!/bin/sh
+echo "other hook logic"
+exit 0
+EOF
+      chmod +x .git/hooks/pre-commit
+      
+      "$GGA_BIN" install >/dev/null 2>&1
+      
+      # GGA should appear BEFORE the final exit 0
+      # Get line numbers
+      gga_line=$(grep -n "GGA START" .git/hooks/pre-commit | cut -d: -f1)
+      exit_line=$(grep -n "^exit 0" .git/hooks/pre-commit | tail -1 | cut -d: -f1)
+      
+      # GGA line should be less than exit line (appears before)
+      The value "$gga_line" should be present
+      The value "$exit_line" should be present
+      # shellcheck disable=SC2154
+      [ "$gga_line" -lt "$exit_line" ]
+      The status should be success
+    End
   End
 
   Describe 'cmd_uninstall'

@@ -422,15 +422,44 @@ cmd_install() {
       exit 0
     fi
     
-    # Existing hook without GGA - append with markers
-    log_info "Existing pre-commit hook found, appending GGA..."
-    {
-      echo ""
-      echo "$GGA_MARKER_START"
-      echo "# Gentleman Guardian Angel - Code Review"
-      echo 'gga run || exit 1'
-      echo "$GGA_MARKER_END"
-    } >> "$HOOK_PATH"
+    # Existing hook without GGA - insert with markers
+    log_info "Existing pre-commit hook found, adding GGA..."
+    
+    # Build the GGA block
+    local gga_block
+    gga_block=$(printf '\n%s\n%s\n%s\n%s' \
+      "$GGA_MARKER_START" \
+      "# Gentleman Guardian Angel - Code Review" \
+      'gga run || exit 1' \
+      "$GGA_MARKER_END")
+    
+    # Check if hook ends with 'exit 0' or 'exit' (with optional whitespace)
+    # If so, insert GGA block before the final exit to ensure it runs
+    if grep -Eq '^[[:space:]]*exit[[:space:]]*[0-9]*[[:space:]]*$' "$HOOK_PATH"; then
+      # Find the last exit line and insert before it
+      local last_exit_line
+      last_exit_line=$(grep -n '^[[:space:]]*exit[[:space:]]*[0-9]*[[:space:]]*$' "$HOOK_PATH" | tail -1 | cut -d: -f1)
+      
+      if [[ -n "$last_exit_line" ]]; then
+        # Insert GGA block before the last exit line
+        local temp_file
+        temp_file=$(mktemp)
+        {
+          head -n $((last_exit_line - 1)) "$HOOK_PATH"
+          echo "$gga_block"
+          echo ""
+          tail -n +"$last_exit_line" "$HOOK_PATH"
+        } > "$temp_file"
+        mv "$temp_file" "$HOOK_PATH"
+        chmod +x "$HOOK_PATH"
+        log_success "Inserted Gentleman Guardian Angel before exit in hook: $HOOK_PATH"
+        echo ""
+        exit 0
+      fi
+    fi
+    
+    # No exit statement found, append to end
+    echo "$gga_block" >> "$HOOK_PATH"
     log_success "Appended Gentleman Guardian Angel to existing hook: $HOOK_PATH"
     echo ""
     exit 0

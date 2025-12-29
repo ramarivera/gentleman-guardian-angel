@@ -198,7 +198,7 @@ execute_ollama_api() {
   # Build JSON payload safely using python3 to escape special characters
   # Using stdin to avoid ARG_MAX limits with large prompts
   local json_payload
-  json_payload=$(printf '%s' "$prompt" | python3 -c "
+  if ! json_payload=$(printf '%s' "$prompt" | python3 -c "
 import sys, json
 prompt = sys.stdin.read()
 model = sys.argv[1]
@@ -208,9 +208,7 @@ payload = json.dumps({
     'stream': False
 })
 print(payload)
-" "$model" 2>&1)
-  
-  if [[ $? -ne 0 ]]; then
+" "$model" 2>&1); then
     echo "Error: Failed to build JSON payload" >&2
     echo "$json_payload" >&2
     return 1

@@ -65,6 +65,8 @@ print_help() {
   echo ""
   echo -e "${BOLD}RUN OPTIONS:${NC}"
   echo "  --no-cache        Force review all files, ignoring cache"
+  echo "  --ci              CI mode: review files changed in last commit (HEAD~1..HEAD)"
+  echo "                    Use this in GitLab CI, GitHub Actions, etc."
   echo ""
   echo -e "${BOLD}CONFIGURATION:${NC}"
   echo "  Create a ${CYAN}.gga${NC} file in your project root or"
@@ -85,6 +87,7 @@ print_help() {
   echo "  gga install       # Install git hook"
   echo "  gga run           # Run review (with cache)"
   echo "  gga run --no-cache # Run review (ignore cache)"
+  echo "  gga run --ci      # Run review in CI (last commit)"
   echo "  gga cache status  # Show cache info"
   echo ""
   echo -e "${BOLD}ENVIRONMENT VARIABLES:${NC}"
@@ -498,12 +501,17 @@ cmd_cache() {
 
 cmd_run() {
   local use_cache=true
+  local ci_mode=false
   
   # Parse arguments
   for arg in "$@"; do
     case "$arg" in
       --no-cache)
         use_cache=false
+        ;;
+      --ci)
+        ci_mode=true
+        use_cache=false  # Cache doesn't make sense in CI
         ;;
     esac
   done
@@ -554,25 +562,41 @@ cmd_run() {
     log_info "Exclude patterns: $EXCLUDE_PATTERNS"
   fi
   
+  # Mode status
+  if [[ "$ci_mode" == true ]]; then
+    log_info "Mode: ${CYAN}CI (reviewing last commit)${NC}"
+  fi
+  
   # Cache status
   if [[ "$use_cache" == true ]]; then
     log_info "Cache: ${GREEN}enabled${NC}"
+  elif [[ "$ci_mode" == true ]]; then
+    log_info "Cache: ${YELLOW}disabled (CI mode)${NC}"
   else
     log_info "Cache: ${YELLOW}disabled (--no-cache)${NC}"
   fi
   echo ""
 
-  # Get staged files
-  STAGED_FILES=$(get_staged_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
-
-  if [[ -z "$STAGED_FILES" ]]; then
-    log_warning "No matching files staged for commit"
-    echo ""
-    exit 0
+  # Get files to review based on mode
+  local FILES_TO_CHECK
+  if [[ "$ci_mode" == true ]]; then
+    FILES_TO_CHECK=$(get_ci_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
+    if [[ -z "$FILES_TO_CHECK" ]]; then
+      log_warning "No matching files changed in last commit"
+      echo ""
+      exit 0
+    fi
+  else
+    FILES_TO_CHECK=$(get_staged_files "$FILE_PATTERNS" "$EXCLUDE_PATTERNS")
+    if [[ -z "$FILES_TO_CHECK" ]]; then
+      log_warning "No matching files staged for commit"
+      echo ""
+      exit 0
+    fi
   fi
 
   # Initialize/validate cache
-  local files_to_review="$STAGED_FILES"
+  local files_to_review="$FILES_TO_CHECK"
   local cache_initialized=false
   
   if [[ "$use_cache" == true ]]; then
@@ -587,7 +611,7 @@ cmd_run() {
     cache_initialized=true
     
     # Filter out cached files
-    files_to_review=$(filter_uncached_files "$STAGED_FILES")
+    files_to_review=$(filter_uncached_files "$FILES_TO_CHECK")
     
     # Calculate cached files
     local total_count=0
@@ -595,7 +619,7 @@ cmd_run() {
     
     while IFS= read -r file; do
       [[ -n "$file" ]] && total_count=$((total_count + 1))
-    done <<< "$STAGED_FILES"
+    done <<< "$FILES_TO_CHECK"
     
     while IFS= read -r file; do
       [[ -n "$file" ]] && uncached_count=$((uncached_count + 1))
@@ -750,6 +774,74 @@ get_staged_files() {
 
     if [[ "$match" == true && "$excluded" == false ]]; then
       echo "$file"
+    fi
+  done
+}
+
+get_ci_files() {
+  local patterns="$1"
+  local excludes="$2"
+
+  # Get files changed in the last commit (for CI environments)
+  local changed
+  changed=$(git diff --name-only --diff-filter=ACM HEAD~1..HEAD 2>/dev/null)
+
+  if [[ -z "$changed" ]]; then
+    return
+  fi
+
+  # Convert comma-separated patterns to array
+  IFS=',' read -ra PATTERN_ARRAY <<< "$patterns"
+  IFS=',' read -ra EXCLUDE_ARRAY <<< "$excludes"
+
+  # Filter files (same logic as get_staged_files)
+  echo "$changed" | while IFS= read -r file; do
+    local match=false
+    local excluded=false
+
+    # Check if file matches any include pattern
+    for pattern in "${PATTERN_ARRAY[@]}"; do
+      pattern=$(echo "$pattern" | xargs) # trim whitespace
+      if [[ "$pattern" == \** ]]; then
+        local suffix="${pattern#\*}"
+        if [[ "$file" == *"$suffix" ]]; then
+          match=true
+          break
+        fi
+      else
+        # shellcheck disable=SC2053
+        if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+          match=true
+          break
+        fi
+      fi
+    done
+
+    # Check if file matches any exclude pattern
+    if [[ "$match" == true && -n "$excludes" ]]; then
+      for pattern in "${EXCLUDE_ARRAY[@]}"; do
+        pattern=$(echo "$pattern" | xargs) # trim whitespace
+        if [[ "$pattern" == \** ]]; then
+          local suffix="${pattern#\*}"
+          if [[ "$file" == *"$suffix" ]]; then
+            excluded=true
+            break
+          fi
+        else
+          # shellcheck disable=SC2053
+          if [[ "$file" == $pattern ]] || [[ "$(basename "$file")" == $pattern ]]; then
+            excluded=true
+            break
+          fi
+        fi
+      done
+    fi
+
+    if [[ "$match" == true && "$excluded" == false ]]; then
+      # Only include if file still exists (wasn't deleted)
+      if [[ -f "$file" ]]; then
+        echo "$file"
+      fi
     fi
   done
 }

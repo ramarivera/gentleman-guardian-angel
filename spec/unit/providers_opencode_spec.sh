@@ -42,4 +42,30 @@ Describe 'providers.sh opencode support'
       The output should include "test prompt"
     End
   End
+
+  Describe 'validate_provider() - opencode'
+    It 'succeeds when opencode CLI is available'
+      # Mock opencode to pretend it exists
+      opencode() { return 0; }
+
+      When call validate_provider "opencode"
+      The status should be success
+    End
+
+    It 'succeeds when opencode has a model specified'
+      # Mock opencode to pretend it exists
+      opencode() { return 0; }
+
+      When call validate_provider "opencode:gpt-4"
+      The status should be success
+    End
+
+    It 'succeeds with anthropic model format'
+      # Mock opencode to pretend it exists
+      opencode() { return 0; }
+
+      When call validate_provider "opencode:anthropic/claude-sonnet-4"
+      The status should be success
+    End
+  End
 End

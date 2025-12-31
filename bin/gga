@@ -323,6 +323,7 @@ cmd_install() {
   # commit-msg hook receives the commit message file as $1, which GGA uses automatically
   local gga_run_cmd
   if [[ "$hook_type" == "commit-msg" ]]; then
+    # shellcheck disable=SC2016 # We intentionally use single quotes - $1 expands when hook runs, not now
     gga_run_cmd='gga run "$1" || exit 1'
   else
     gga_run_cmd='gga run || exit 1'

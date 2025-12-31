@@ -61,6 +61,17 @@ Describe 'gga commands'
       The output should include "--ci"
       The output should include "CI mode"
     End
+
+    It 'shows --commit-msg install option in help'
+      When call gga help
+      The output should include "--commit-msg"
+      The output should include "commit-msg hook"
+    End
+
+    It 'shows INCLUDE_COMMIT_MSG config option in help'
+      When call gga help
+      The output should include "INCLUDE_COMMIT_MSG"
+    End
   End
 
   Describe 'gga init'
@@ -108,6 +119,16 @@ Describe 'gga commands'
       gga init > /dev/null
       The contents of file ".gga" should include "STRICT_MODE"
     End
+
+    It 'config file contains INCLUDE_COMMIT_MSG'
+      gga init > /dev/null
+      The contents of file ".gga" should include "INCLUDE_COMMIT_MSG"
+    End
+
+    It 'config file notes commit-msg hook requirement'
+      gga init > /dev/null
+      The contents of file ".gga" should include "gga install --commit-msg"
+    End
   End
 
   Describe 'gga config'
@@ -144,6 +165,11 @@ Describe 'gga commands'
     It 'shows rules file status'
       When call gga config
       The output should include "Rules File"
+    End
+
+    It 'shows INCLUDE_COMMIT_MSG setting'
+      When call gga config
+      The output should include "INCLUDE_COMMIT_MSG"
     End
   End
 
@@ -184,6 +210,24 @@ Describe 'gga commands'
       When call gga install
       The status should be failure
       The output should include "Not a git repository"
+    End
+
+    It 'creates commit-msg hook with --commit-msg flag'
+      When call gga install --commit-msg
+      The status should be success
+      The output should be present
+      The path ".git/hooks/commit-msg" should be file
+      The path ".git/hooks/pre-commit" should not be exist
+    End
+
+    It 'commit-msg hook is executable'
+      gga install --commit-msg > /dev/null
+      The path ".git/hooks/commit-msg" should be executable
+    End
+
+    It 'shows info about commit message validation after install --commit-msg'
+      When call gga install --commit-msg
+      The output should include "INCLUDE_COMMIT_MSG"
     End
   End
 

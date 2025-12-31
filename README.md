@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/bash-5.0%2B-orange.svg" alt="Bash">
   <img src="https://img.shields.io/badge/homebrew-tap-FBB040.svg" alt="Homebrew">
-  <img src="https://img.shields.io/badge/tests-130%20passing-brightgreen.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-143%20passing-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
 </p>
 
@@ -264,20 +264,21 @@ All files comply with the coding standards defined in AGENTS.md.
 
 ## 📋 Commands
 
-| Command           | Description                                  | Example               |
-| ----------------- | -------------------------------------------- | --------------------- |
-| `init`            | Create sample `.gga` config file             | `gga init`            |
-| `install`         | Install git pre-commit hook in current repo  | `gga install`         |
-| `uninstall`       | Remove git pre-commit hook from current repo | `gga uninstall`       |
-| `run`             | Run code review on staged files              | `gga run`             |
-| `run --ci`        | Run code review on last commit (for CI/CD)   | `gga run --ci`        |
-| `run --no-cache`  | Run review ignoring cache                    | `gga run --no-cache`  |
-| `config`          | Display current configuration and status     | `gga config`          |
-| `cache status`    | Show cache status for current project        | `gga cache status`    |
-| `cache clear`     | Clear cache for current project              | `gga cache clear`     |
-| `cache clear-all` | Clear all cached data                        | `gga cache clear-all` |
-| `help`            | Show help message with all commands          | `gga help`            |
-| `version`         | Show installed version                       | `gga version`         |
+| Command                | Description                                  | Example                    |
+| ---------------------- | -------------------------------------------- | -------------------------- |
+| `init`                 | Create sample `.gga` config file             | `gga init`                 |
+| `install`              | Install git pre-commit hook (default)        | `gga install`              |
+| `install --commit-msg` | Install git commit-msg hook (for commit message validation) | `gga install --commit-msg` |
+| `uninstall`            | Remove git hooks from current repo           | `gga uninstall`            |
+| `run`                  | Run code review on staged files              | `gga run`                  |
+| `run --ci`             | Run code review on last commit (for CI/CD)   | `gga run --ci`             |
+| `run --no-cache`       | Run review ignoring cache                    | `gga run --no-cache`       |
+| `config`               | Display current configuration and status     | `gga config`               |
+| `cache status`         | Show cache status for current project        | `gga cache status`         |
+| `cache clear`          | Clear cache for current project              | `gga cache clear`          |
+| `cache clear-all`      | Clear all cached data                        | `gga cache clear-all`      |
+| `help`                 | Show help message with all commands          | `gga help`                 |
+| `version`              | Show installed version                       | `gga version`              |
 
 ### Command Details
 
@@ -292,14 +293,26 @@ $ gga init
 
 #### `gga install`
 
-Installs a git pre-commit hook that automatically runs code review on every commit.
+Installs a git hook that automatically runs code review on every commit.
+
+**Default (pre-commit hook):**
 
 ```bash
 $ gga install
 ✅ Installed pre-commit hook: .git/hooks/pre-commit
 ```
 
-If a pre-commit hook already exists, it will ask if you want to append to it.
+**With commit message validation (commit-msg hook):**
+
+```bash
+$ gga install --commit-msg
+✅ Installed commit-msg hook: .git/hooks/commit-msg
+ℹ️  Commit message validation is now available (INCLUDE_COMMIT_MSG=true)
+```
+
+The `--commit-msg` flag installs a commit-msg hook instead of pre-commit. This enables the `INCLUDE_COMMIT_MSG` feature, which sends your commit message to the AI for validation (e.g., conventional commits format, issue references, etc.).
+
+If a hook already exists, GGA will append to it rather than replacing it.
 
 #### `gga uninstall`
 
@@ -496,17 +509,23 @@ RULES_FILE="AGENTS.md"
 # Fail if AI response is ambiguous (recommended for CI)
 # Default: true
 STRICT_MODE="true"
+
+# Include commit message in AI review
+# Requires: gga install --commit-msg
+# Default: false
+INCLUDE_COMMIT_MSG="false"
 ```
 
 ### Configuration Options
 
-| Option             | Required | Default     | Description                              |
-| ------------------ | -------- | ----------- | ---------------------------------------- |
-| `PROVIDER`         | ✅ Yes   | -           | AI provider to use                       |
-| `FILE_PATTERNS`    | No       | `*`         | Comma-separated file patterns to include |
-| `EXCLUDE_PATTERNS` | No       | -           | Comma-separated file patterns to exclude |
-| `RULES_FILE`       | No       | `AGENTS.md` | Path to your coding standards file       |
-| `STRICT_MODE`      | No       | `true`      | Fail on ambiguous AI responses           |
+| Option               | Required | Default     | Description                                        |
+| -------------------- | -------- | ----------- | -------------------------------------------------- |
+| `PROVIDER`           | ✅ Yes   | -           | AI provider to use                                 |
+| `FILE_PATTERNS`      | No       | `*`         | Comma-separated file patterns to include           |
+| `EXCLUDE_PATTERNS`   | No       | -           | Comma-separated file patterns to exclude           |
+| `RULES_FILE`         | No       | `AGENTS.md` | Path to your coding standards file                 |
+| `STRICT_MODE`        | No       | `true`      | Fail on ambiguous AI responses                     |
+| `INCLUDE_COMMIT_MSG` | No       | `false`     | Include commit message in AI review (requires `--commit-msg` hook) |
 
 ### Config Hierarchy (Priority Order)
 
@@ -520,6 +539,60 @@ GGA_PROVIDER="gemini" gga run
 
 # Or export for the session
 export GGA_PROVIDER="ollama:llama3.2"
+```
+
+### Commit Message Validation
+
+GGA can validate your commit messages against your coding standards. This is useful for:
+
+- **Conventional commits** - Ensure messages follow `type(scope): subject` format
+- **Issue references** - Require links to issues/tickets
+- **Message quality** - Check for meaningful descriptions
+
+#### Setup
+
+```bash
+# 1. Install the commit-msg hook
+gga install --commit-msg
+
+# 2. Enable commit message inclusion in .gga
+INCLUDE_COMMIT_MSG="true"
+
+# 3. Add commit message rules to AGENTS.md
+```
+
+#### Example AGENTS.md Rules
+
+```markdown
+## Commit Messages
+
+REJECT if:
+- Not following conventional commits format (type(scope): subject)
+- Type not in: feat, fix, docs, style, refactor, test, chore
+- Missing issue reference (e.g., #123, JIRA-456)
+- Subject line > 72 characters
+
+REQUIRE:
+- Imperative mood in subject ("add" not "added")
+- Body explaining WHY, not just WHAT
+```
+
+#### Example Output
+
+```
+STATUS: FAILED
+
+Violations found:
+
+1. **Commit Message** - Format Rule
+   - Issue: Missing issue reference
+   - Current: "feat: add login button"
+   - Fix: "feat: add login button (#123)"
+
+2. **Commit Message** - Convention Rule
+   - Issue: Subject not in imperative mood
+   - Current: "fixed typo in readme"
+   - Fix: "fix: correct typo in readme"
 ```
 
 ---
@@ -788,9 +861,17 @@ Gentleman Guardian Angel works standalone with native git hooks, but you can als
 This is what `gga install` does automatically:
 
 ```bash
-# .git/hooks/pre-commit
+# .git/hooks/pre-commit (default)
 #!/usr/bin/env bash
 gga run || exit 1
+```
+
+Or with commit message validation (`gga install --commit-msg`):
+
+```bash
+# .git/hooks/commit-msg
+#!/usr/bin/env bash
+gga run "$1" || exit 1  # $1 is the commit message file
 ```
 
 ### Husky (Node.js projects)
@@ -1138,7 +1219,17 @@ shellspec spec/unit/my_feature_spec.sh
 
 ## 📋 Changelog
 
-### v2.5.1 (Latest)
+### v2.6.0 (Latest)
+
+- ✅ **feat**: Commit message validation support (PR #11 by @ramarivera)
+  - `gga install --commit-msg` for commit-msg hook (opt-in)
+  - `INCLUDE_COMMIT_MSG="true"` to send commit message to AI
+  - Pre-commit hook remains default for backward compatibility
+  - Uninstall handles both hook types
+- ✅ Added recovery warning for AI agents on failed reviews
+- ✅ **143 tests** (13 new for commit-msg hook support)
+
+### v2.5.1
 
 - ✅ **fix(gemini)**: Use `-p` flag for non-interactive prompt passing - fixes exit code 41 in CI
 - ✅ **fix(opencode)**: Use positional argument instead of stdin pipe per documentation

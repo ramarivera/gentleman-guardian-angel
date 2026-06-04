@@ -16,6 +16,7 @@ Use whichever AI CLI you have installed:
 | **Gemini**        | `gemini`           | `echo "prompt" \| gemini`         | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
 | **Codex**         | `codex`            | `codex exec "prompt"`             | `npm i -g @openai/codex`                                                           |
 | **OpenCode**      | `opencode`         | `echo "prompt" \| opencode run`   | [opencode.ai](https://opencode.ai)                                                 |
+| **Pi**            | `pi[:model]`       | `pi run [model] "prompt"`          | [pi.earendil.works](https://pi.earendil.works)                                      |
 | **Ollama**        | `ollama:<model>`   | `ollama run <model> "prompt"`     | [ollama.ai](https://ollama.ai)                                                     |
 | **LM Studio**     | `lmstudio[:model]` | HTTP API call to local server     | [lmstudio.ai](https://lmstudio.ai)                                                 |
 | **GitHub Models** | `github:<model>`   | HTTP API via `gh auth token`      | [github.com/marketplace/models](https://github.com/marketplace/models)              |
@@ -39,6 +40,13 @@ PROVIDER="opencode"
 
 # Use OpenCode with specific model
 PROVIDER="opencode:anthropic/claude-opus-4-5"
+
+# Use Pi (default model)
+PROVIDER="pi"
+
+# Use Pi with specific model
+PROVIDER="pi:anthropic/claude-sonnet-4-6"
+PROVIDER="pi:openai/gpt-5.2"
 
 # Use Ollama with Llama 3.2
 PROVIDER="ollama:llama3.2"
@@ -100,6 +108,27 @@ Google's Gemini CLI. Built into Antigravity IDE.
 # Test it works
 echo "Say hello" | gemini
 ```
+
+### Pi
+
+Pi Coding Agent — runs via the Pi CLI with optional model routing.
+
+```bash
+# Install
+npm install -g @earendil-works/pi-coding-agent
+# or
+# See https://pi.earendil.works
+
+# Test it works
+pi run "Say hello"
+
+# Configure GGA
+PROVIDER="pi"                                    # default model
+PROVIDER="pi:anthropic/claude-sonnet-4-6"       # specific model
+PROVIDER="pi:openai/gpt-5.2"                    # OpenAI model
+```
+
+> 💡 **Model names with slashes**: Pi supports model names like `anthropic/claude-sonnet-4-6` and `openai/gpt-5.2` natively.
 
 ### GitHub Models
 

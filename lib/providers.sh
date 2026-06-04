@@ -8,6 +8,7 @@
 # - gemini: Google Gemini CLI
 # - codex: OpenAI Codex CLI
 # - opencode: OpenCode CLI (optional :model)
+# - pi: Pi Coding Agent CLI (optional :model)
 # - ollama:<model>: Ollama with specified model
 # - lmstudio[:model]: LM Studio (optional model)
 # - github:<model>: GitHub Models (OpenAI-compatible API)
@@ -66,6 +67,18 @@ validate_provider() {
         echo ""
         echo "Install OpenCode CLI:"
         echo "  https://opencode.ai"
+        echo ""
+        return 1
+      fi
+      ;;
+    pi)
+      if ! command -v pi &> /dev/null; then
+        echo -e "${RED}❌ Pi CLI not found${NC}"
+        echo ""
+        echo "Install Pi Coding Agent CLI:"
+        echo "  npm install -g @earendil-works/pi-coding-agent"
+        echo "  # or"
+        echo "  https://pi.earendil.works"
         echo ""
         return 1
       fi
@@ -155,6 +168,7 @@ validate_provider() {
       echo "  - gemini"
       echo "  - codex"
       echo "  - opencode"
+      echo "  - pi[:model]"
       echo "  - ollama:<model>"
       echo "  - lmstudio[:model]"
       echo "  - github:<model>"
@@ -191,6 +205,13 @@ execute_provider() {
         model=""
       fi
       execute_opencode "$model" "$prompt"
+      ;;
+    pi)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      execute_pi "$model" "$prompt"
       ;;
     ollama)
       local model="${provider#*:}"
@@ -263,6 +284,22 @@ execute_opencode() {
     opencode run --model "$model" "$prompt" 2>&1
   else
     opencode run "$prompt" 2>&1
+  fi
+  return $?
+}
+
+execute_pi() {
+  local model="$1"
+  local prompt="$2"
+  
+  # Pi Coding Agent CLI - non-interactive mode
+  # pi -p [message] for non-interactive prompt processing
+  # Pi supports thinking level shorthand in model: pi --model openai-codex/gpt-5.5:high
+  # So we pass the full model string including any :high/:low suffix
+  if [[ -n "$model" ]]; then
+    pi --model "$model" -p "$prompt" 2>&1
+  else
+    pi -p "$prompt" 2>&1
   fi
   return $?
 }
@@ -639,6 +676,14 @@ get_provider_info() {
         echo "OpenCode CLI (model: $model)"
       fi
       ;;
+    pi)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        echo "Pi Coding Agent CLI"
+      else
+        echo "Pi Coding Agent CLI (model: $model)"
+      fi
+      ;;
     ollama)
       local model="${provider#*:}"
       echo "Ollama (model: $model)"
@@ -810,6 +855,19 @@ execute_provider_with_timeout() {
         execute_with_timeout "$timeout" "OpenCode" opencode run --model "$model" "$prompt"
       else
         execute_with_timeout "$timeout" "OpenCode" opencode run "$prompt"
+      fi
+      ;;
+    pi)
+      local model="${provider#*:}"
+      if [[ "$model" == "$provider" ]]; then
+        model=""
+      fi
+      # Pi supports thinking level shorthand in model: pi --model openai-codex/gpt-5.5:high
+      # Pass the full model string including any :high/:low suffix
+      if [[ -n "$model" ]]; then
+        execute_with_timeout "$timeout" "Pi" pi --model "$model" -p "$prompt"
+      else
+        execute_with_timeout "$timeout" "Pi" pi -p "$prompt"
       fi
       ;;
     ollama)

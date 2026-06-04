@@ -325,6 +325,23 @@ All good!"
       The output should include "Codex"
     End
 
+    It 'returns info for pi without model'
+      When call get_provider_info "pi"
+      The output should include "Pi"
+    End
+
+    It 'returns info for pi with model name'
+      When call get_provider_info "pi:anthropic/claude-sonnet-4-6"
+      The output should include "Pi"
+      The output should include "anthropic/claude-sonnet-4-6"
+    End
+
+    It 'returns info for pi with openai model'
+      When call get_provider_info "pi:openai/gpt-5.2"
+      The output should include "Pi"
+      The output should include "openai/gpt-5.2"
+    End
+
     It 'returns info for ollama with model name'
       When call get_provider_info "ollama:llama3.2"
       The output should include "Ollama"
@@ -504,6 +521,42 @@ EOF
     End
   End
 
+  Describe 'execute_pi()'
+    It 'passes prompt without model'
+      pi() {
+        echo "flags:$1 prompt:$2"
+      }
+      When call execute_pi "" "test prompt"
+      The output should eq "flags:-p prompt:test prompt"
+    End
+
+    It 'passes model and prompt'
+      pi() {
+        echo "flag1:$1 model:$2 flag2:$3 prompt:$4"
+      }
+      When call execute_pi "anthropic/claude-sonnet-4-6" "test prompt"
+      The output should include "model:anthropic/claude-sonnet-4-6"
+      The output should include "prompt:test prompt"
+    End
+
+    It 'passes full model with effort suffix'
+      pi() {
+        echo "flag1:$1 model:$2 flag2:$3 prompt:$4"
+      }
+      When call execute_pi "openai-codex/gpt-5.5:high" "test prompt"
+      The output should include "model:openai-codex/gpt-5.5:high"
+      The output should include "prompt:test prompt"
+    End
+
+    It 'returns pi exit status'
+      pi() {
+        return 42
+      }
+      When call execute_pi "llama3" "test"
+      The status should eq 42
+    End
+  End
+
   Describe 'validate_provider() - invalid cases'
     # Test cases that don't depend on external commands
     # Note: validate_provider outputs to stdout (not stderr)
@@ -588,6 +641,11 @@ EOF
       When call helper_get_base_provider "ollama:codellama:7b"
       The output should eq "ollama"
     End
+
+    It 'extracts base provider from pi with model containing slashes'
+      When call helper_get_base_provider "pi:anthropic/claude-sonnet-4-6"
+      The output should eq "pi"
+    End
   End
 
   Describe 'provider model extraction'
@@ -611,6 +669,21 @@ EOF
     It 'returns original when no colon present'
       When call helper_get_model "claude"
       The output should eq "claude"
+    End
+
+    It 'extracts model with slashes from pi:model format'
+      When call helper_get_model "pi:anthropic/claude-sonnet-4-6"
+      The output should eq "anthropic/claude-sonnet-4-6"
+    End
+
+    It 'extracts openai model from pi:model format'
+      When call helper_get_model "pi:openai/gpt-5.2"
+      The output should eq "openai/gpt-5.2"
+    End
+
+    It 'extracts model with effort from pi:model:effort format'
+      When call helper_get_model "pi:openai/gpt-5.5:high"
+      The output should eq "openai/gpt-5.5:high"
     End
   End
 End

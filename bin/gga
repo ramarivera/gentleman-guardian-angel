@@ -9,7 +9,7 @@
 
 set -e
 
-VERSION="2.8.0"
+VERSION="${GGA_VERSION:-dev}"
 # Resolve the real script location even when gga is invoked via a symlink.
 # macOS /usr/bin/readlink has no -f, so walk the symlink chain manually.
 GGA_SOURCE="${BASH_SOURCE[0]}"
@@ -81,6 +81,11 @@ UPDATE_CHECK_REPO="Gentleman-Programming/gentleman-guardian-angel"
 
 # Check for newer version on GitHub (2s timeout, silent on failure)
 check_update() {
+  # Skip update check for dev builds (not installed via Homebrew/release)
+  if [[ "$VERSION" == "dev" ]]; then
+    return 0
+  fi
+
   local latest_tag
   latest_tag=$("${CURL_CMD:-curl}" -sf --max-time 2 \
     -H "Accept: application/vnd.github+json" \

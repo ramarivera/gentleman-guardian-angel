@@ -1,0 +1,3 @@
+# pi model-guardrails runtime observability log — machine-specific, large, and may
+# contain logged prompt/response content. Runtime output, not source.
+.pi/model-guardrails/

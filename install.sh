@@ -86,6 +86,17 @@ cp "$SCRIPT_DIR/lib/providers.sh" "$LIB_INSTALL_DIR/providers.sh"
 cp "$SCRIPT_DIR/lib/cache.sh" "$LIB_INSTALL_DIR/cache.sh"
 cp "$SCRIPT_DIR/lib/pr_mode.sh" "$LIB_INSTALL_DIR/pr_mode.sh"
 
+# Inject version from git tag if available (otherwise stays "dev")
+GIT_VERSION=$(cd "$SCRIPT_DIR" && git describe --tags --abbrev=0 2>/dev/null || true)
+GIT_VERSION="${GIT_VERSION#v}"  # Strip leading 'v'
+if [[ -n "$GIT_VERSION" ]]; then
+  if [[ "$GGA_OS" == "macos" ]]; then
+    sed -i '' "s|VERSION=\"\${GGA_VERSION:-dev}\"|VERSION=\"$GIT_VERSION\"|" "$INSTALL_DIR/gga"
+  else
+    sed -i "s|VERSION=\"\${GGA_VERSION:-dev}\"|VERSION=\"$GIT_VERSION\"|" "$INSTALL_DIR/gga"
+  fi
+fi
+
 # Update LIB_DIR path in installed script
 if [[ "$GGA_OS" == "macos" ]]; then
   sed -i '' "s|LIB_DIR=.*|LIB_DIR=\"$LIB_INSTALL_DIR\"|" "$INSTALL_DIR/gga"

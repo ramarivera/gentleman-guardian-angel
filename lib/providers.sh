@@ -292,16 +292,17 @@ execute_pi() {
   local model="$1"
   local prompt="$2"
   
-  # Pi Coding Agent CLI - non-interactive mode
-  # pi -p [message] for non-interactive prompt processing
-  # Pi supports thinking level shorthand in model: pi --model openai-codex/gpt-5.5:high
-  # So we pass the full model string including any :high/:low suffix
+  # Pi Coding Agent CLI - non-interactive mode.
+  # Feed the prompt via STDIN (not argv) so large review prompts never hit the OS
+  # argv limit (E2BIG / "Argument list too long"). Mirrors execute_claude.
+  # --model accepts the full "provider/id:thinking" string (e.g. openai-codex/gpt-5.5:high),
+  # so we pass it through unchanged including any :high/:low suffix.
   if [[ -n "$model" ]]; then
-    pi --model "$model" -p "$prompt" 2>&1
+    printf '%s' "$prompt" | pi --model "$model" -p 2>&1
   else
-    pi -p "$prompt" 2>&1
+    printf '%s' "$prompt" | pi -p 2>&1
   fi
-  return $?
+  return "${PIPESTATUS[1]}"
 }
 
 execute_ollama() {
@@ -862,13 +863,24 @@ execute_provider_with_timeout() {
       if [[ "$model" == "$provider" ]]; then
         model=""
       fi
-      # Pi supports thinking level shorthand in model: pi --model openai-codex/gpt-5.5:high
-      # Pass the full model string including any :high/:low suffix
+      # Feed the prompt via STDIN from a temp file (not argv) so large review
+      # prompts never hit the OS argv limit (E2BIG / "Argument list too long").
+      # Only the model + short temp-file path cross the command line; the prompt
+      # itself rides on stdin. --model accepts the full "provider/id:thinking"
+      # string (e.g. .../gpt-5.5:high), passed through unchanged.
+      local pi_prompt_file
+      pi_prompt_file=$(mktemp "${TEMP:-${TMPDIR:-/tmp}}/gga_pi_prompt.XXXXXX")
+      printf '%s' "$prompt" > "$pi_prompt_file"
+      local pi_rc
       if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "Pi" pi --model "$model" -p "$prompt"
+        execute_with_timeout "$timeout" "Pi" bash -c 'pi --model "$1" -p < "$2" 2>&1' -- "$model" "$pi_prompt_file"
+        pi_rc=$?
       else
-        execute_with_timeout "$timeout" "Pi" pi -p "$prompt"
+        execute_with_timeout "$timeout" "Pi" bash -c 'pi -p < "$1" 2>&1' -- "$pi_prompt_file"
+        pi_rc=$?
       fi
+      rm -f "$pi_prompt_file"
+      return "$pi_rc"
       ;;
     ollama)
       local model="${provider#*:}"

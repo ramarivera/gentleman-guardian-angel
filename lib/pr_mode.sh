@@ -152,6 +152,24 @@ get_pr_files() {
 # Usage: get_pr_diff <range>
 get_pr_diff() {
   local range="$1"
+  local files="${2:-}"
+
+  # When a newline-separated file list is given, scope the diff to exactly those
+  # files (the include/exclude-filtered review set) so excluded paths (e.g. vendor
+  # docs) stay out of the prompt and don't blow the model's context window.
+  # With no list, fall back to the full range diff.
+  if [[ -n "$files" ]]; then
+    local -a file_args=()
+    local f
+    while IFS= read -r f; do
+      [[ -n "$f" ]] && file_args+=("$f")
+    done <<< "$files"
+    if [[ ${#file_args[@]} -gt 0 ]]; then
+      git diff "$range" -- "${file_args[@]}" 2>/dev/null
+      return
+    fi
+  fi
+
   git diff "$range" 2>/dev/null
 }
 

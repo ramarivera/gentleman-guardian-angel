@@ -522,29 +522,29 @@ EOF
   End
 
   Describe 'execute_pi()'
-    It 'passes prompt without model'
+    It 'passes prompt without model via stdin'
       pi() {
-        echo "flags:$1 prompt:$2"
+        echo "flags:$* prompt:$(cat)"
       }
       When call execute_pi "" "test prompt"
       The output should eq "flags:-p prompt:test prompt"
     End
 
-    It 'passes model and prompt'
+    It 'passes model on argv and prompt on stdin'
       pi() {
-        echo "flag1:$1 model:$2 flag2:$3 prompt:$4"
+        echo "args:$* prompt:$(cat)"
       }
       When call execute_pi "anthropic/claude-sonnet-4-6" "test prompt"
-      The output should include "model:anthropic/claude-sonnet-4-6"
+      The output should include "args:--model anthropic/claude-sonnet-4-6 -p"
       The output should include "prompt:test prompt"
     End
 
-    It 'passes full model with effort suffix'
+    It 'passes full model with effort suffix on argv, prompt on stdin'
       pi() {
-        echo "flag1:$1 model:$2 flag2:$3 prompt:$4"
+        echo "args:$* prompt:$(cat)"
       }
       When call execute_pi "openai-codex/gpt-5.5:high" "test prompt"
-      The output should include "model:openai-codex/gpt-5.5:high"
+      The output should include "args:--model openai-codex/gpt-5.5:high -p"
       The output should include "prompt:test prompt"
     End
 

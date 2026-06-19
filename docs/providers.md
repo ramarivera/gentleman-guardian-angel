@@ -130,6 +130,8 @@ PROVIDER="pi:openai/gpt-5.2"                    # OpenAI model
 
 > 💡 **Model names with slashes**: Pi supports model names like `anthropic/claude-sonnet-4-6` and `openai/gpt-5.2` natively.
 
+GGA passes generated review prompts to Pi through temporary `@file` input instead of a direct command-line argument, which avoids OS argument-length limits on large diffs.
+
 ### GitHub Models
 
 Access dozens of models (GPT-4o, DeepSeek R1, Grok 3, Phi-4, LLaMA) using your GitHub account — no extra API keys.

@@ -184,6 +184,34 @@ Describe 'execute_provider_with_timeout()'
       The stderr should include "TIMEOUT"
     End
   End
+
+  Describe 'pi prompt handling'
+    It 'passes pi prompts through @file input'
+      execute_with_timeout() {
+        echo "timeout:$1 provider:$2 cmd:$3 flag:$4 prompt_arg:$5 prompt:$(cat "${5#@}")"
+      }
+
+      When call execute_provider_with_timeout "pi" "large review prompt" 5
+      The output should include "timeout:5"
+      The output should include "provider:Pi"
+      The output should include "cmd:pi"
+      The output should include "flag:-p"
+      The output should include "prompt_arg:@"
+      The output should include "prompt:large review prompt"
+    End
+
+    It 'passes pi model prompts through @file input'
+      execute_with_timeout() {
+        echo "timeout:$1 provider:$2 cmd:$3 model_flag:$4 model:$5 print_flag:$6 prompt_arg:$7 prompt:$(cat "${7#@}")"
+      }
+
+      When call execute_provider_with_timeout "pi:openai-codex/gpt-5.5:high" "large review prompt" 5
+      The output should include "model:openai-codex/gpt-5.5:high"
+      The output should include "print_flag:-p"
+      The output should include "prompt_arg:@"
+      The output should include "prompt:large review prompt"
+    End
+  End
 End
 
 Describe 'provider base extraction in timeout context'

@@ -288,20 +288,36 @@ execute_opencode() {
   return $?
 }
 
+create_pi_prompt_file() {
+  local prompt="$1"
+  local prompt_file
+
+  prompt_file=$(mktemp "${TMPDIR:-/tmp}/gga-pi-prompt.XXXXXX") || return 1
+  printf '%s' "$prompt" > "$prompt_file"
+  printf '%s\n' "$prompt_file"
+}
+
 execute_pi() {
   local model="$1"
   local prompt="$2"
+  local prompt_file
+  local exit_code
   
   # Pi Coding Agent CLI - non-interactive mode
-  # pi -p [message] for non-interactive prompt processing
+  # pi -p [message] for non-interactive prompt processing. Use @file input so
+  # generated review prompts do not exceed OS argv limits.
   # Pi supports thinking level shorthand in model: pi --model openai-codex/gpt-5.5:high
   # So we pass the full model string including any :high/:low suffix
+  prompt_file=$(create_pi_prompt_file "$prompt") || return 1
   if [[ -n "$model" ]]; then
-    pi --model "$model" -p "$prompt" 2>&1
+    pi --model "$model" -p "@$prompt_file" 2>&1
+    exit_code=$?
   else
-    pi -p "$prompt" 2>&1
+    pi -p "@$prompt_file" 2>&1
+    exit_code=$?
   fi
-  return $?
+  rm -f "$prompt_file"
+  return "$exit_code"
 }
 
 execute_ollama() {
@@ -859,16 +875,24 @@ execute_provider_with_timeout() {
       ;;
     pi)
       local model="${provider#*:}"
+      local prompt_file
+      local exit_code
       if [[ "$model" == "$provider" ]]; then
         model=""
       fi
       # Pi supports thinking level shorthand in model: pi --model openai-codex/gpt-5.5:high
-      # Pass the full model string including any :high/:low suffix
+      # Pass the full model string including any :high/:low suffix. Use @file
+      # input so generated review prompts do not exceed OS argv limits.
+      prompt_file=$(create_pi_prompt_file "$prompt") || return 1
       if [[ -n "$model" ]]; then
-        execute_with_timeout "$timeout" "Pi" pi --model "$model" -p "$prompt"
+        execute_with_timeout "$timeout" "Pi" pi --model "$model" -p "@$prompt_file"
+        exit_code=$?
       else
-        execute_with_timeout "$timeout" "Pi" pi -p "$prompt"
+        execute_with_timeout "$timeout" "Pi" pi -p "@$prompt_file"
+        exit_code=$?
       fi
+      rm -f "$prompt_file"
+      return "$exit_code"
       ;;
     ollama)
       local model="${provider#*:}"

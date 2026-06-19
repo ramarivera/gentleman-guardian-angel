@@ -130,7 +130,7 @@ PROVIDER="pi:openai/gpt-5.2"                    # OpenAI model
 
 > 💡 **Model names with slashes**: Pi supports model names like `anthropic/claude-sonnet-4-6` and `openai/gpt-5.2` natively.
 
-GGA passes generated review prompts to Pi through temporary `@file` input instead of a direct command-line argument, which avoids OS argument-length limits on large diffs.
+GGA streams generated review prompts to Pi through stdin instead of a direct command-line argument, which avoids OS argument-length limits on large diffs.
 
 ### GitHub Models
 

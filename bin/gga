@@ -9,8 +9,18 @@
 
 set -e
 
-VERSION="2.8.0"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="${GGA_VERSION:-dev}"
+# Resolve the real script location even when gga is invoked via a symlink.
+# macOS /usr/bin/readlink has no -f, so walk the symlink chain manually.
+GGA_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$GGA_SOURCE" ]; do
+  GGA_SOURCE_DIR="$(cd -P "$(dirname "$GGA_SOURCE")" && pwd)"
+  GGA_SOURCE="$(readlink "$GGA_SOURCE")"
+  if [[ "$GGA_SOURCE" != /* ]]; then
+    GGA_SOURCE="$GGA_SOURCE_DIR/$GGA_SOURCE"
+  fi
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$GGA_SOURCE")" && pwd)"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 # Source library functions
@@ -71,6 +81,11 @@ UPDATE_CHECK_REPO="Gentleman-Programming/gentleman-guardian-angel"
 
 # Check for newer version on GitHub (2s timeout, silent on failure)
 check_update() {
+  # Skip update check for dev builds (not installed via Homebrew/release)
+  if [[ "$VERSION" == "dev" ]]; then
+    return 0
+  fi
+
   local latest_tag
   latest_tag=$("${CURL_CMD:-curl}" -sf --max-time 2 \
     -H "Accept: application/vnd.github+json" \
@@ -862,7 +877,9 @@ cmd_run() {
     # PR mode: use dedicated PR prompt builder
     local pr_diff=""
     if [[ "$diff_only" == "true" ]]; then
-      pr_diff=$(get_pr_diff "$pr_range")
+      # Scope the diff to the filtered review set so excluded paths don't bloat
+      # the prompt or exceed the provider's context window.
+      pr_diff=$(get_pr_diff "$pr_range" "$files_to_review")
     fi
     PROMPT=$(build_pr_prompt "$RULES" "$files_to_review" "$diff_only" "$pr_diff" "$pr_base")
   else

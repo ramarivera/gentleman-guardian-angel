@@ -257,6 +257,26 @@ Describe 'PR Mode'
       When call get_pr_diff "main...HEAD"
       The output should eq ""
     End
+
+    It 'scopes the diff to the given files (keeps excluded paths out of the prompt)'
+      git() {
+        shift  # drop "diff"
+        echo "GITDIFF_ARGS:$*"
+      }
+
+      When call get_pr_diff "main...HEAD" "$(printf 'a.md\nb.yaml\n')"
+      The output should eq "GITDIFF_ARGS:main...HEAD -- a.md b.yaml"
+    End
+
+    It 'falls back to the full range diff when no file list is given'
+      git() {
+        shift  # drop "diff"
+        echo "GITDIFF_ARGS:$*"
+      }
+
+      When call get_pr_diff "main...HEAD"
+      The output should eq "GITDIFF_ARGS:main...HEAD"
+    End
   End
 
   Describe 'validate_pr_mode_flags()'

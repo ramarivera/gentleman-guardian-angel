@@ -35,6 +35,10 @@ STRICT_MODE="true"
 # Default: 300 (5 minutes)
 TIMEOUT="300"
 
+# Maximum files per provider call in --pr-mode
+# Default: 20
+PR_CHUNK_SIZE="20"
+
 # Base branch for --pr-mode (auto-detects main/master/develop if empty)
 # PR_BASE_BRANCH="main"
 ```
@@ -51,6 +55,7 @@ TIMEOUT="300"
 | `RULES_FILE`       | No       | `AGENTS.md` | Path to your coding standards file       |
 | `STRICT_MODE`      | No       | `true`      | Fail on ambiguous AI responses           |
 | `TIMEOUT`          | No       | `300`       | Max seconds to wait for AI response      |
+| `PR_CHUNK_SIZE`    | No       | `20`        | Max files per `--pr-mode` provider call  |
 | `PR_BASE_BRANCH`   | No       | auto-detect | Base branch for `--pr-mode`              |
 
 ---

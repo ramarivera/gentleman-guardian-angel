@@ -73,6 +73,7 @@ DEFAULT_FILE_PATTERNS="*"
 DEFAULT_RULES_FILE="AGENTS.md"
 DEFAULT_STRICT_MODE="true"
 DEFAULT_TIMEOUT="300"  # 5 minutes - generous default for large reviews
+DEFAULT_PR_CHUNK_SIZE="20"
 UPDATE_CHECK_REPO="Gentleman-Programming/gentleman-guardian-angel"
 
 # ============================================================================
@@ -171,6 +172,7 @@ print_help() {
   echo "  RULES_FILE         File containing review rules (default: AGENTS.md)"
   echo "  STRICT_MODE        Fail on ambiguous AI response (default: true)"
   echo "  TIMEOUT            Max seconds to wait for AI response (default: 300)"
+  echo "  PR_CHUNK_SIZE      Max files per --pr-mode provider call (default: 20)"
   echo "  PR_BASE_BRANCH     Base branch for --pr-mode (default: auto-detect)"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
@@ -223,6 +225,7 @@ load_config() {
   RULES_FILE="$DEFAULT_RULES_FILE"
   STRICT_MODE="$DEFAULT_STRICT_MODE"
   TIMEOUT="$DEFAULT_TIMEOUT"
+  PR_CHUNK_SIZE="$DEFAULT_PR_CHUNK_SIZE"
   PR_BASE_BRANCH=""
 
   # Load global config first (platform-aware path)
@@ -304,6 +307,7 @@ cmd_config() {
   echo -e "  RULES_FILE:        ${CYAN}$RULES_FILE${NC}"
   echo -e "  STRICT_MODE:       ${CYAN}$STRICT_MODE${NC}"
   echo -e "  TIMEOUT:           ${CYAN}${TIMEOUT}s${NC}"
+  echo -e "  PR_CHUNK_SIZE:     ${CYAN}$PR_CHUNK_SIZE${NC}"
   if [[ -n "${PR_BASE_BRANCH:-}" ]]; then
     echo -e "  PR_BASE_BRANCH:    ${CYAN}$PR_BASE_BRANCH${NC}"
   else
@@ -381,6 +385,10 @@ STRICT_MODE="true"
 # Default: 300 (5 minutes)
 # Increase for large changesets or slow connections
 TIMEOUT="300"
+
+# Maximum files per provider call in --pr-mode.
+# Large PRs are reviewed in chunks to avoid provider context limits.
+PR_CHUNK_SIZE="20"
 
 # Base branch for --pr-mode (auto-detects main/master/develop if empty)
 # Default: auto-detect
@@ -870,6 +878,106 @@ cmd_run() {
   if [[ -n "$commit_msg_file" && -f "$commit_msg_file" ]]; then
     commit_msg=$(cat "$commit_msg_file")
     log_info "Including commit message in review"
+  fi
+
+  if [[ "$pr_mode" == "true" ]]; then
+    local pr_chunk_size="${PR_CHUNK_SIZE:-$DEFAULT_PR_CHUNK_SIZE}"
+    if ! [[ "$pr_chunk_size" =~ ^[0-9]+$ ]] || [[ "$pr_chunk_size" -lt 1 ]]; then
+      pr_chunk_size="$DEFAULT_PR_CHUNK_SIZE"
+    fi
+
+    local pr_file_count=0
+    while IFS= read -r file; do
+      [[ -n "$file" ]] && pr_file_count=$((pr_file_count + 1))
+    done <<< "$files_to_review"
+
+    if [[ "$pr_file_count" -gt "$pr_chunk_size" ]]; then
+      log_info "Chunking PR review: $pr_file_count files in chunks of $pr_chunk_size"
+      echo ""
+
+      local chunk_files=""
+      local chunk_count=0
+      local chunk_index=1
+      local failed_chunks=0
+
+      review_pr_chunk() {
+        local files="$1"
+        local index="$2"
+        local diff_content=""
+        local prompt
+        local result
+        local exec_status
+        local status_check
+
+        if [[ "$diff_only" == "true" ]]; then
+          diff_content=$(get_pr_diff "$pr_range" "$files")
+        fi
+        prompt=$(build_pr_prompt "$RULES" "$files" "$diff_only" "$diff_content" "$pr_base")
+
+        log_info "Sending PR chunk $index to $PROVIDER (${TIMEOUT}s timeout)..."
+        set +e
+        result=$(execute_provider_with_timeout "$PROVIDER" "$prompt" "$TIMEOUT")
+        exec_status=$?
+        set -e
+
+        if [[ $exec_status -ne 0 ]]; then
+          log_error "Provider failed for PR chunk $index (exit code: $exec_status)"
+          [[ -n "$result" ]] && echo "$result"
+          return 1
+        fi
+
+        echo "$result"
+        echo ""
+        status_check=$(echo "$result" | head -n 15)
+        if echo "$status_check" | grep -q "STATUS: PASSED"; then
+          log_success "PR chunk $index passed"
+          return 0
+        fi
+        if echo "$status_check" | grep -q "STATUS: FAILED"; then
+          log_error "PR chunk $index failed"
+          return 1
+        fi
+
+        log_warning "Could not determine review status for PR chunk $index"
+        [[ "$STRICT_MODE" == "true" ]] && return 1
+        return 0
+      }
+
+      while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+        if [[ -z "$chunk_files" ]]; then
+          chunk_files="$file"
+        else
+          chunk_files="${chunk_files}"$'\n'"$file"
+        fi
+        chunk_count=$((chunk_count + 1))
+
+        if [[ "$chunk_count" -ge "$pr_chunk_size" ]]; then
+          if ! review_pr_chunk "$chunk_files" "$chunk_index"; then
+            failed_chunks=$((failed_chunks + 1))
+          fi
+          chunk_files=""
+          chunk_count=0
+          chunk_index=$((chunk_index + 1))
+        fi
+      done <<< "$files_to_review"
+
+      if [[ -n "$chunk_files" ]]; then
+        if ! review_pr_chunk "$chunk_files" "$chunk_index"; then
+          failed_chunks=$((failed_chunks + 1))
+        fi
+      fi
+
+      if [[ "$failed_chunks" -gt 0 ]]; then
+        log_error "CODE REVIEW FAILED ($failed_chunks chunk(s) failed)"
+        echo ""
+        exit 1
+      fi
+
+      log_success "CODE REVIEW PASSED"
+      echo ""
+      exit 0
+    fi
   fi
 
   # Build prompt based on mode

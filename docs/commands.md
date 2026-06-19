@@ -16,8 +16,8 @@ Full command reference for Gentleman Guardian Angel.
 | `uninstall`                 | Remove git hooks from current repo                        | `gga uninstall`                 |
 | `run`                       | Run code review on staged files                           | `gga run`                       |
 | `run --ci`                  | Run code review on last commit (for CI/CD)                | `gga run --ci`                  |
-| `run --pr-mode`             | Review all files changed in the full PR                   | `gga run --pr-mode`             |
-| `run --pr-mode --diff-only` | PR review with diffs only (faster, cheaper)               | `gga run --pr-mode --diff-only` |
+| `run --pr-mode`             | Review all files changed in the full PR, chunking large PRs | `gga run --pr-mode`             |
+| `run --pr-mode --diff-only` | PR review with diffs only (faster, cheaper, chunked when large) | `gga run --pr-mode --diff-only` |
 | `run --no-cache`            | Run review ignoring cache                                 | `gga run --no-cache`            |
 | `config`                    | Display current configuration and status                  | `gga config`                    |
 | `cache status`              | Show cache status for current project                     | `gga cache status`              |
